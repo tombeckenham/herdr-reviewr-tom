@@ -45,7 +45,7 @@ reviewr never edits your files, never sends on its own, and never posts to your 
 - **herdr ≥ 0.9.3** and **git**.
 - A terminal with **24-bit color**.
 - **macOS, Linux, or Windows.**
-- For the PR tab only: **`gh`**, **`glab`**, or **`az`** (with the `azure-devops` extension), logged in.
+- For the PR tab only: **`gh`**, **`glab`**, **`az`** (with the `azure-devops` extension), or **`src`**, logged in.
 
 ## Install
 
@@ -172,7 +172,7 @@ comment. Click files, tabs, and links. Scroll with the wheel.
 
 - **Changes** — files the current scope changed.
 - **All files** — every file in the worktree. You can comment here too. Git-ignored files are dimmed.
-- **PR** — the branch's pull request (merge request on GitLab): state, checks, description, comments.
+- **PR** — the branch's pull request (merge request on GitLab): state, checks, description, comments. TanStack Source uses `src`.
 
 Switching between **Changes** and **All files** keeps your file and line when the other tab lists
 the file. `follow_file_across_tabs = false` gives each tab its own place instead.
@@ -218,6 +218,7 @@ review_prefix = "Fix each comment, then run the tests."
 github_host = "github.example.com"
 gitlab_host = "git.corp.example"
 azure_devops_host = "tfs.corp.example"
+source_host = "src.corp.example"
 
 [keybindings]
 comment = ["c", "ㅊ"]
@@ -310,10 +311,10 @@ keys help non-Latin layouts: bind the character your layout types on the same ke
 A key is one character, a named key (`tab`, `left`, `right`, `up`, `down`, `pageup`, `pagedown`),
 or a `ctrl+` / `alt+` chord. `Esc` and `Enter` are fixed.
 
-### GitHub, GitLab, and Azure DevOps
+### GitHub, GitLab, Azure DevOps, and TanStack Source
 
 The PR tab reads the `upstream` remote, else `origin`, so forks work. Self-hosted servers need
-`github_host`, `gitlab_host`, or `azure_devops_host`, matching the remote's hostname exactly.
+`github_host`, `gitlab_host`, `azure_devops_host`, or `source_host`, matching the remote's hostname exactly.
 An SSH alias like `github.com-work` resolves through your ssh config to the host it stands for.
 
 ### Pane placement
@@ -347,8 +348,10 @@ On Windows, point it at the plugin's own `bin` folder.
   comments stay. With several agents, it goes to the only one in reviewr's tab, else it asks.
 - **last turn shows all of a turn or nothing.** If the agent writes the instant a turn starts,
   the scope shows nothing for that turn and says why.
-- **The PR tab** supports GitHub, GitLab, and Azure DevOps only. A merged or closed PR shows as
-  history. Each comment list shows its newest 100.
+- **The PR tab** supports GitHub, GitLab, Azure DevOps, and TanStack Source. A merged or closed PR
+  shows as history. On TanStack Source that history sorts by when the pull request opened, because
+  the list has no close time. Each comment list shows its newest 100. A long TanStack Source
+  conversation keeps its oldest page and says the list is truncated.
 - **A background pane** catches up 30 seconds after a change, or at once when shown.
 - **A rename can pair with the wrong file** until you press `r`.
 - **Comments live only in the pane.** Closing it loses unsent ones. Send delivers all or none.

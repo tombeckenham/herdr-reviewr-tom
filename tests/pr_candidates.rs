@@ -417,6 +417,16 @@ fn a_gh_checkout_without_push_access_pins_the_pull_request() {
 }
 
 #[test]
+fn a_pull_ref_on_a_source_remote_pins_the_pull_request() {
+    let repo = worktree();
+    repo.git(&["remote", "set-url", "origin", "https://source.tanstack.com/owner/repo.git"]);
+    repo.git(&["config", "branch.work.remote", "origin"]);
+    repo.git(&["config", "branch.work.merge", "refs/pull/2175/head"]);
+    let pin = pr_local(repo.path(), None).unwrap().pin.expect("the pull request pins");
+    assert_eq!((pin.repo.forge(), pin.number), (herdr_reviewr::git::Forge::Source, 2175));
+}
+
+#[test]
 fn tracking_an_upstream_base_publishes_nothing_there() {
     // A fork clone: `git switch -c fix upstream/main` records tracking, not publication.
     let repo = worktree();

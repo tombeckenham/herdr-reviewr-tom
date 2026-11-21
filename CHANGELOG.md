@@ -6,6 +6,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **The PR tab reads TanStack Source** through `src`: state, checks, description, reviews, and line comments. A self-hosted host is `source_host`. Finished pull requests sort by when they opened, because the list has no close time. The tab paints from the list and the stored head, without the pull request diff. A branch that tracks `refs/pull/N/head` reads that pull request directly, as a fork's has no head branch to look up. Checks load alongside the rest when the branch sits on the pull request's head. A long conversation keeps its oldest page and says the list is truncated.
+
 ## [0.52.1] — 2026-11-08
 
 ### Changed

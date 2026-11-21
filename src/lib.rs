@@ -29,6 +29,7 @@ pub mod schedule;
 pub mod search;
 pub mod selection;
 pub mod snippet;
+pub mod source;
 pub mod split;
 #[cfg(test)]
 mod test_support;

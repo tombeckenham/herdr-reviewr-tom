@@ -2065,6 +2065,34 @@ fn an_unsupported_host_points_at_the_per_forge_host_keys() {
     assert!(out.contains("github_host"), "GitHub key offered:\n{out}");
     assert!(out.contains("gitlab_host"), "GitLab key offered:\n{out}");
     assert!(out.contains("azure_devops_host"), "Azure DevOps key offered:\n{out}");
+    assert!(out.contains("source_host"), "TanStack Source key offered:\n{out}");
+}
+
+#[test]
+fn a_source_repository_renders_pr_nouns_and_the_login_remedy() {
+    use herdr_reviewr::forge::{PrSnapshot, PrView};
+    use herdr_reviewr::git::Forge;
+    let r = Repo::init();
+    r.write("x.rs", "y\n");
+    r.commit_all("init");
+    let mut app = app_on(&r);
+    app.set_tab(Tab::Pr).unwrap();
+    app.pr_forge = Forge::Source;
+
+    app.apply_pr(PrView::NoPr);
+    let out = render(&app);
+    assert!(out.contains("No pull request yet"), "Source empty state:\n{out}");
+
+    app.apply_pr(PrView::Pr(Box::new(PrSnapshot { number: 7, ..common::pr_snapshot() })));
+    let out = render(&app);
+    assert!(out.contains("#7"), "PR reference form:\n{out}");
+
+    app.apply_pr(PrView::NoCli(Forge::Source));
+    let out = render(&app);
+    assert!(out.contains("Install `src`"), "src install step:\n{out}");
+    app.apply_pr(PrView::NotAuthed(Forge::Source, "source.tanstack.com".to_string()));
+    let out = render(&app);
+    assert!(out.contains("src auth login --hostname source.tanstack.com"), "login remedy:\n{out}");
 }
 
 #[test]

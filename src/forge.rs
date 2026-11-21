@@ -81,7 +81,7 @@ impl PrView {
 /// The login command the unauthenticated remedy advertises.
 fn login_hint(forge: crate::git::Forge, host: &str) -> String {
     match forge {
-        crate::git::Forge::GitHub | crate::git::Forge::GitLab => {
+        crate::git::Forge::GitHub | crate::git::Forge::GitLab | crate::git::Forge::Source => {
             format!("`{} auth login --hostname {host}`", forge.cli())
         }
         crate::git::Forge::AzureDevOps => {
@@ -94,7 +94,7 @@ fn login_hint(forge: crate::git::Forge, host: &str) -> String {
 fn extension_hint(forge: crate::git::Forge) -> Option<&'static str> {
     match forge {
         crate::git::Forge::AzureDevOps => Some("`az extension add --name azure-devops`"),
-        crate::git::Forge::GitHub | crate::git::Forge::GitLab => None,
+        crate::git::Forge::GitHub | crate::git::Forge::GitLab | crate::git::Forge::Source => None,
     }
 }
 
@@ -531,6 +531,9 @@ fn fetch_inner(
         }
         crate::git::Forge::AzureDevOps => {
             return Ok(crate::azure_devops::fetch(repo, input, repository, cancelled));
+        }
+        crate::git::Forge::Source => {
+            return Ok(crate::source::fetch(repo, input, repository, cancelled));
         }
         crate::git::Forge::GitHub => {}
     }

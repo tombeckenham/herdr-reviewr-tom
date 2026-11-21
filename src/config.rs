@@ -63,7 +63,7 @@ impl Config {
 /// Lines a keyboard move keeps between the diff cursor and the pane's edges, unless configured.
 pub const DEFAULT_SCROLLOFF: usize = 3;
 
-const PLUGIN_CONFIG_KEYS: [&str; 17] = [
+const PLUGIN_CONFIG_KEYS: [&str; 18] = [
     "theme",
     "default_scope",
     "markdown_view",
@@ -77,6 +77,7 @@ const PLUGIN_CONFIG_KEYS: [&str; 17] = [
     "github_host",
     "gitlab_host",
     "azure_devops_host",
+    "source_host",
     "editor",
     "url_opener",
     "review_prefix",
@@ -189,6 +190,7 @@ pub struct PluginConfig {
     github_host: Option<String>,
     gitlab_host: Option<String>,
     azure_devops_host: Option<String>,
+    source_host: Option<String>,
     editor: Option<String>,
     url_opener: Option<String>,
     review_prefix: Option<String>,
@@ -211,6 +213,7 @@ impl Default for PluginConfig {
             github_host: None,
             gitlab_host: None,
             azure_devops_host: None,
+            source_host: None,
             editor: None,
             url_opener: None,
             review_prefix: None,
@@ -277,12 +280,17 @@ impl PluginConfig {
         self.azure_devops_host.as_deref()
     }
 
+    pub fn source_host(&self) -> Option<&str> {
+        self.source_host.as_deref()
+    }
+
     /// The forge host set one fetch resolves remotes against.
     pub fn forge_hosts(&self) -> crate::git::ForgeHosts<'_> {
         crate::git::ForgeHosts {
             github: self.github_host(),
             gitlab: self.gitlab_host(),
             azure_devops: self.azure_devops_host(),
+            source: self.source_host(),
         }
     }
 
@@ -495,6 +503,9 @@ fn parse_plugin_config(path: &Path) -> Result<PluginConfig, PluginConfigError> {
     if let Some(value) = table.get("azure_devops_host") {
         config.azure_devops_host = Some(parse_forge_host(path, "azure_devops_host", value)?);
     }
+    if let Some(value) = table.get("source_host") {
+        config.source_host = Some(parse_forge_host(path, "source_host", value)?);
+    }
     if let Some(value) = table.get("editor") {
         let command = value
             .as_str()
@@ -538,6 +549,7 @@ fn parse_plugin_config(path: &Path) -> Result<PluginConfig, PluginConfigError> {
         ("github_host", &config.github_host),
         ("gitlab_host", &config.gitlab_host),
         ("azure_devops_host", &config.azure_devops_host),
+        ("source_host", &config.source_host),
     ];
     for (index, (key, value)) in host_keys.iter().enumerate() {
         let Some(value) = value else { continue };
@@ -954,6 +966,8 @@ mod tests {
             // Any organization label matches the built-in wildcard.
             ("azure_devops_host = \"foo.visualstudio.com\"\n", "`azure_devops_host`"),
             ("github_host = \"bar.visualstudio.com\"\n", "`github_host`"),
+            ("source_host = \"source.tanstack.com\"\n", "`source_host`"),
+            ("source_host = \"https://src.corp.example\"\n", "`source_host`"),
         ];
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
@@ -997,11 +1011,19 @@ mod tests {
         assert_eq!(config.azure_devops_host(), Some("tfs.corp.example"));
         assert_eq!(config.forge_hosts().azure_devops, Some("tfs.corp.example"));
 
+        std::fs::write(&path, "source_host = \"Src.Corp.EXAMPLE\"\n").unwrap();
+        let config = super::plugin_config_in(dir.path()).unwrap();
+        assert_eq!(config.source_host(), Some("src.corp.example"));
+        assert_eq!(config.forge_hosts().source, Some("src.corp.example"));
+
         // Every pair of forge keys collides the same way.
         let pairs = [
             ("github_host", "azure_devops_host"),
             ("gitlab_host", "azure_devops_host"),
             ("github_host", "gitlab_host"),
+            ("github_host", "source_host"),
+            ("gitlab_host", "source_host"),
+            ("azure_devops_host", "source_host"),
         ];
         for (first, second) in pairs {
             std::fs::write(

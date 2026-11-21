@@ -168,6 +168,7 @@ pub enum Forge {
     GitHub,
     GitLab,
     AzureDevOps,
+    Source,
 }
 
 /// The per-forge display vocabulary — the CLI, noun, and reference table in
@@ -178,13 +179,14 @@ impl Forge {
             Self::GitHub => "GitHub",
             Self::GitLab => "GitLab",
             Self::AzureDevOps => "Azure DevOps",
+            Self::Source => "TanStack Source",
         }
     }
 
     /// The forge's full noun: the word its users say.
     pub fn noun(self) -> &'static str {
         match self {
-            Self::GitHub | Self::AzureDevOps => "pull request",
+            Self::GitHub | Self::AzureDevOps | Self::Source => "pull request",
             Self::GitLab => "merge request",
         }
     }
@@ -192,7 +194,7 @@ impl Forge {
     /// The forge's noun abbreviation: `PR` on GitHub, `MR` on GitLab.
     pub fn abbr(self) -> &'static str {
         match self {
-            Self::GitHub | Self::AzureDevOps => "PR",
+            Self::GitHub | Self::AzureDevOps | Self::Source => "PR",
             Self::GitLab => "MR",
         }
     }
@@ -200,7 +202,7 @@ impl Forge {
     /// The reference sigil before a number: `#226` on GitHub, `!42` on GitLab.
     pub fn sigil(self) -> char {
         match self {
-            Self::GitHub | Self::AzureDevOps => '#',
+            Self::GitHub | Self::AzureDevOps | Self::Source => '#',
             Self::GitLab => '!',
         }
     }
@@ -211,6 +213,7 @@ impl Forge {
             Self::GitHub => "gh",
             Self::GitLab => "glab",
             Self::AzureDevOps => "az",
+            Self::Source => "src",
         }
     }
 }
@@ -221,6 +224,7 @@ pub struct ForgeHosts<'a> {
     pub github: Option<&'a str>,
     pub gitlab: Option<&'a str>,
     pub azure_devops: Option<&'a str>,
+    pub source: Option<&'a str>,
 }
 
 /// The host an SSH alias stands for, `None` when unknown: [`ssh_hostname`] outside tests.
@@ -246,7 +250,7 @@ impl RepoTarget {
     pub(crate) fn with_path(forge: Forge, host: &str, segments: &[&str]) -> Option<Self> {
         let host = host.to_ascii_lowercase();
         let valid_len = match forge {
-            Forge::GitHub => segments.len() == 2,
+            Forge::GitHub | Forge::Source => segments.len() == 2,
             // A `-` segment means a pasted browse link, not a deep namespace.
             Forge::GitLab => segments.len() >= 2 && !segments.contains(&"-"),
             // Always `[organization, project, repository]`, shaped by `ado_canonicalize`.
@@ -378,6 +382,15 @@ fn classify_remote(url: &str, hosts: &ForgeHosts<'_>, alias: SshAlias) -> Reposi
             let segments: Vec<&str> = segments.iter().map(String::as_str).collect();
             RepoTarget::with_path(forge, &host, &segments)
         }),
+        // Web and git URLs write the owner as `@owner`; the API owner has no sigil.
+        Forge::Source => {
+            let raw = segments.first().copied().unwrap_or("");
+            let owner = raw.strip_prefix('@').unwrap_or(raw);
+            let name = segments.get(1).copied().unwrap_or("");
+            (segments.len() == 2)
+                .then(|| RepoTarget::with_path(forge, &host, &[owner, name]))
+                .flatten()
+        }
         _ => RepoTarget::with_path(forge, &host, &segments),
     };
     match target {
@@ -400,6 +413,9 @@ pub(crate) fn forge_for_host(host: &str, hosts: &ForgeHosts<'_>) -> Option<Forge
         || hosts.azure_devops == Some(host)
     {
         return Some(Forge::AzureDevOps);
+    }
+    if host == "source.tanstack.com" || hosts.source == Some(host) {
+        return Some(Forge::Source);
     }
     None
 }
@@ -483,8 +499,9 @@ fn hostname_line(config: &str) -> Option<String> {
 /// Split a Git remote URL into transport, host, and path for scheme and scp-style forms.
 fn split_remote(url: &str) -> Option<(RemoteTransport, &str, &str, bool)> {
     if let Some((scheme, rest)) = url.split_once("://") {
-        let rest = rest.split_once('@').map_or(rest, |(_, r)| r); // drop `user@`
-        let (hostport, path) = rest.split_once('/').unwrap_or((rest, ""));
+        // userinfo is in the authority. A later `@owner` segment is the path, not a user.
+        let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
+        let hostport = authority.rsplit_once('@').map_or(authority, |(_, host)| host);
         let (host, port) = hostport.split_once(':').map_or((hostport, None), |(h, p)| (h, Some(p)));
         let transport = match scheme.to_ascii_lowercase().as_str() {
             "ssh" => RemoteTransport::Ssh,
@@ -663,8 +680,10 @@ pub(crate) fn pr_local(
         match merge {
             BranchMerge::Branch(name) => push_head(recorded, name, &mut heads),
             BranchMerge::Pull(forge, number) => {
+                // Source keeps GitHub's `refs/pull/N/head` shape.
+                let shape = |on: Forge| if on == Forge::Source { Forge::GitHub } else { on };
                 pin = recorded
-                    .filter(|repo| repo.forge() == *forge)
+                    .filter(|repo| shape(repo.forge()) == *forge)
                     .map(|repo| PrPin { repo, number: *number });
             }
             BranchMerge::Other => {}
@@ -2682,7 +2701,8 @@ mod tests {
         parse_numstat, parse_raw,
     };
 
-    const NONE: ForgeHosts<'_> = ForgeHosts { github: None, gitlab: None, azure_devops: None };
+    const NONE: ForgeHosts<'_> =
+        ForgeHosts { github: None, gitlab: None, azure_devops: None, source: None };
 
     /// Classify with no SSH alias known, so no test reads this machine's ssh config.
     fn classify(url: &str, hosts: &ForgeHosts<'_>) -> RepositoryIdentity {
@@ -2947,6 +2967,42 @@ mod tests {
         assert_eq!(
             classify("https://github.company.com/owner/repo.git", &github("github.company.com")),
             repo("github.company.com", "owner", "repo")
+        );
+        // userinfo stays in the authority, so a token does not eat the host.
+        assert_eq!(
+            classify("https://git:token@github.com/owner/repo.git", &NONE),
+            repo("github.com", "owner", "repo")
+        );
+    }
+
+    #[test]
+    fn repository_identity_parses_tanstack_source_remote_forms() {
+        let repo = |host: &str, owner: &str, name: &str| {
+            RepositoryIdentity::Repository(
+                RepoTarget::with_path(Forge::Source, host, &[owner, name]).unwrap(),
+            )
+        };
+        let hosts = ForgeHosts { source: Some("src.corp.example"), ..NONE };
+        // The `@` is the web path sigil, not userinfo, and it is not part of the API owner.
+        assert_eq!(
+            classify("https://source.tanstack.com/@TanStack/source.git", &NONE),
+            repo("source.tanstack.com", "TanStack", "source")
+        );
+        assert_eq!(
+            classify("git@source.tanstack.com:@Acme/app.git", &NONE),
+            repo("source.tanstack.com", "Acme", "app")
+        );
+        assert_eq!(
+            classify("https://src.corp.example/@Acme/app.git", &hosts),
+            repo("src.corp.example", "Acme", "app")
+        );
+        assert_eq!(
+            classify("https://source.tanstack.com/TanStack/source.git", &NONE),
+            repo("source.tanstack.com", "TanStack", "source")
+        );
+        assert_eq!(
+            classify("https://source.tanstack.com/@TanStack", &NONE),
+            RepositoryIdentity::Malformed("source.tanstack.com".to_string())
         );
     }
 
